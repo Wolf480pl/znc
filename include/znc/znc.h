@@ -260,6 +260,7 @@ class CZNC : private CCoreTranslationMixin {
     bool ReadConfig(CConfig& config, CString& sError);
     bool LoadGlobal(CConfig& config, CString& sError);
     bool LoadUsers(CConfig& config, CString& sError);
+    bool LoadUser(const CString& sUserName, CConfig* pSubConf, CString& sError, bool bSplitConfig);
     bool LoadListeners(CConfig& config, CString& sError);
     void UnloadRemovedModules(const MCString& msModules);
 

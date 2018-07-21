@@ -148,6 +148,7 @@ class CUser : private CCoreTranslationMixin {
     bool SetLanguage(const CString& s);
 
     void SetBeingDeleted(bool b) { m_bBeingDeleted = b; }
+    void SetSplitConfig(bool b) {m_bSplitConfig = b; }
     void SetTimestampFormat(const CString& s) { m_sTimestampFormat = s; }
     void SetTimestampAppend(bool b) { m_bAppendTimestamp = b; }
     void SetTimestampPrepend(bool b) { m_bPrependTimestamp = b; }
@@ -208,6 +209,7 @@ class CUser : private CCoreTranslationMixin {
     bool AutoClearChanBuffer() const;
     bool AutoClearQueryBuffer() const;
     bool IsBeingDeleted() const { return m_bBeingDeleted; }
+    bool HasSplitConfig() const { return m_bSplitConfig; }
     CString GetTimezone() const { return m_sTimezone; }
     unsigned long long BytesRead() const;
     unsigned long long BytesWritten() const;
@@ -251,6 +253,7 @@ class CUser : private CCoreTranslationMixin {
     bool m_bAutoClearChanBuffer;
     bool m_bAutoClearQueryBuffer;
     bool m_bBeingDeleted;
+    bool m_bSplitConfig;
     bool m_bAppendTimestamp;
     bool m_bPrependTimestamp;
     bool m_bAuthOnlyViaModule;

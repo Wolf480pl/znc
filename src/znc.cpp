@@ -573,8 +573,47 @@ bool CZNC::WriteConfig() {
             continue;
         }
 
-        config.AddSubConfig("User", it.second->GetUserName(),
-                            it.second->ToConfig());
+        if (it.second->HasSplitConfig()) {
+            CString sPath = GetUserPath() + "/" + it.second->GetUserName() + "/user.conf";
+            CFile* pUserFile = new CFile(sPath + "~");
+            if (!pUserFile->Open(O_WRONLY|O_CREAT|O_TRUNC, 0600)) {
+                DEBUG("Could not write user config to " + sPath + "~: " +
+                      CString(strerror(errno)));
+                delete pUserFile;
+                pFile->Delete();
+                delete pFile;
+                return false;
+            }
+            it.second->ToConfig().Write(*pUserFile);
+            pUserFile->Sync();
+            if (pUserFile->HadError()) {
+                DEBUG("Error while writing the config, errno says: " +
+                      CString(strerror(errno)));
+                pUserFile->Delete();
+                delete pUserFile;
+                pFile->Delete();
+                delete pFile;
+                return false;
+            }
+            // We wrote to a temporary name, move it to the right place
+            if (!pUserFile->Move(sPath, true)) {
+                DEBUG(
+                    "Error while replacing the user config file with a new version, errno "
+                    "says "
+                    << strerror(errno));
+                pUserFile->Delete();
+                delete pUserFile;
+                pFile->Delete();
+                delete pFile;
+                return false;
+            }
+            pUserFile->SetFileName(sPath);
+            delete pUserFile;
+            config.AddKeyValuePair("LoadUser", it.second->GetUserName());
+        } else {
+            config.AddSubConfig("User", it.second->GetUserName(),
+                                it.second->ToConfig());
+        }
     }
 
     config.Write(*pFile);
@@ -1249,39 +1288,34 @@ bool CZNC::LoadUsers(CConfig& config, CString& sError) {
         const CString& sUserName = subIt.first;
         CConfig* pSubConf = subIt.second.m_pSubConfig;
 
-        CUtils::PrintMessage("Loading user [" + sUserName + "]");
-
-        std::unique_ptr<CUser> pUser(new CUser(sUserName));
-
-        if (!m_sStatusPrefix.empty()) {
-            if (!pUser->SetStatusPrefix(m_sStatusPrefix)) {
-                sError = "Invalid StatusPrefix [" + m_sStatusPrefix +
-                         "] Must be 1-5 chars, no spaces.";
-                CUtils::PrintError(sError);
-                return false;
-            }
+        if (!LoadUser(sUserName, pSubConf, sError, false)) {
+            return false;
         }
+    }
 
-        if (!pUser->ParseConfig(pSubConf, sError)) {
-            CUtils::PrintError(sError);
+    VCString vsList;
+    config.FindStringVector("loaduser", vsList);
+    for (const CString& sUserLine : vsList) {
+        CString sUserName = sUserLine.Token(0);
+        //CString sGroup = sModLine.Token(1);
+        CString sUserPath = GetUserPath() + "/" + sUserName + "/user.conf";
+        CFile* pUserFile = new CFile(sUserPath);
+        if (!pUserFile->Open(sUserPath, O_RDONLY)) {
+            sError = "Can not open user config file";
+            CUtils::PrintStatus(false, sError);
+            delete pUserFile;
             return false;
         }
 
-        if (!pSubConf->empty()) {
-            sError = "Unhandled lines in config for User [" + sUserName + "]!";
-            CUtils::PrintError(sError);
-            DumpConfig(pSubConf);
+        CConfig userConf;
+        if (!userConf.Parse(*pUserFile, sError)) {
+            CUtils::PrintStatus(false, sError);
+            delete pUserFile;
             return false;
         }
+        delete pUserFile;
 
-        CString sErr;
-        if (!AddUser(pUser.release(), sErr, true)) {
-            sError = "Invalid user [" + sUserName + "] " + sErr;
-        }
-
-        if (!sError.empty()) {
-            CUtils::PrintError(sError);
-            pUser->SetBeingDeleted(true);
+        if (!LoadUser(sUserName, &userConf, sError, true)) {
             return false;
         }
     }
@@ -1289,6 +1323,47 @@ bool CZNC::LoadUsers(CConfig& config, CString& sError) {
     if (m_msUsers.empty()) {
         sError = "You must define at least one user in your config.";
         CUtils::PrintError(sError);
+        return false;
+    }
+
+    return true;
+}
+
+bool CZNC::LoadUser(const CString& sUserName, CConfig* pSubConf, CString& sError, bool bSplitConfig) {
+    CUtils::PrintMessage("Loading user [" + sUserName + "]");
+
+    std::unique_ptr<CUser> pUser(new CUser(sUserName));
+
+    if (!m_sStatusPrefix.empty()) {
+        if (!pUser->SetStatusPrefix(m_sStatusPrefix)) {
+            sError = "Invalid StatusPrefix [" + m_sStatusPrefix +
+                     "] Must be 1-5 chars, no spaces.";
+            CUtils::PrintError(sError);
+            return false;
+        }
+    }
+
+    if (!pUser->ParseConfig(pSubConf, sError)) {
+        CUtils::PrintError(sError);
+        return false;
+    }
+    pUser->SetSplitConfig(bSplitConfig);
+
+    if (!pSubConf->empty()) {
+        sError = "Unhandled lines in config for User [" + sUserName + "]!";
+        CUtils::PrintError(sError);
+        DumpConfig(pSubConf);
+        return false;
+    }
+
+    CString sErr;
+    if (!AddUser(pUser.release(), sErr, true)) {
+        sError = "Invalid user [" + sUserName + "] " + sErr;
+    }
+
+    if (!sError.empty()) {
+        CUtils::PrintError(sError);
+        pUser->SetBeingDeleted(true);
         return false;
     }
 
